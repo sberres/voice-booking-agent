@@ -1,6 +1,6 @@
 """
 Voice Booking Agent — Backend Server
-Handles Vapi webhooks + mock calendar (SQLite)
+Handles Vapi webhooks + Google Calendar (with SQLite fallback)
 """
 
 import json
@@ -9,6 +9,19 @@ import os
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+
+# Try Google Calendar, fall back to SQLite mock
+USE_GOOGLE = os.path.exists(os.path.join(os.path.dirname(__file__), "google-credentials.json"))
+if USE_GOOGLE:
+    try:
+        from google_calendar import get_available_slots as gcal_slots, book_appointment as gcal_book, cancel_appointment as gcal_cancel
+        print("✅ Google Calendar integration loaded")
+    except Exception as e:
+        print(f"⚠️ Google Calendar failed to load: {e}")
+        USE_GOOGLE = False
+
+if not USE_GOOGLE:
+    print("📋 Using SQLite mock calendar")
 
 WEB_DIR = os.path.join(os.path.dirname(__file__), "..", "web")
 app = Flask(__name__, static_folder=WEB_DIR, static_url_path="/static")
@@ -122,7 +135,7 @@ def vapi_webhook():
 
         if fn_name == "check_availability":
             date_str = params.get("date", datetime.now().strftime("%Y-%m-%d"))
-            slots = get_available_slots(date_str)
+            slots = gcal_slots(date_str) if USE_GOOGLE else get_available_slots(date_str)
             if slots:
                 slot_text = ", ".join(slots[:6])  # Show max 6 slots
                 result = f"Available slots on {date_str}: {slot_text}"
@@ -133,7 +146,8 @@ def vapi_webhook():
             return jsonify({"results": [{"result": result}]})
 
         elif fn_name == "book_appointment":
-            result = book_appointment(
+            book_fn = gcal_book if USE_GOOGLE else book_appointment
+            result = book_fn(
                 name=params.get("name", "Unknown"),
                 date_str=params.get("date", ""),
                 time_str=params.get("time", ""),
@@ -153,6 +167,13 @@ def vapi_webhook():
         elif fn_name == "cancel_appointment":
             name = params.get("name", "")
             date_str = params.get("date", "")
+            if USE_GOOGLE:
+                result = gcal_cancel(name, date_str)
+                if result["success"]:
+                    res = f"Cancelled appointment for {name} on {date_str}."
+                else:
+                    res = result["error"]
+                return jsonify({"results": [{"result": res}]})
             conn = get_db()
             cursor = conn.execute(
                 "UPDATE appointments SET status = 'cancelled' WHERE name LIKE ? AND date = ? AND status = 'confirmed'",
@@ -196,7 +217,8 @@ def list_appointments():
 def create_appointment():
     """Create appointment via web form."""
     data = request.json
-    result = book_appointment(
+    book_fn = gcal_book if USE_GOOGLE else book_appointment
+    result = book_fn(
         name=data.get("name", ""),
         date_str=data.get("date", ""),
         time_str=data.get("time", ""),
@@ -209,7 +231,7 @@ def create_appointment():
 @app.route("/api/slots/<date>", methods=["GET"])
 def available_slots(date):
     """Get available slots for a date."""
-    slots = get_available_slots(date)
+    slots = gcal_slots(date) if USE_GOOGLE else get_available_slots(date)
     return jsonify({"date": date, "slots": slots})
 
 @app.route("/api/appointments/<int:apt_id>", methods=["DELETE"])
