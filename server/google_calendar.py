@@ -13,7 +13,7 @@ CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "nishithkumar99008@gmail.com"
 SLOT_DURATION = 30  # minutes
 BUSINESS_START = 9   # 9 AM
 BUSINESS_END = 17    # 5 PM
-TIMEZONE = os.environ.get("CALENDAR_TIMEZONE", "Asia/Kolkata")
+TIMEZONE = os.environ.get("CALENDAR_TIMEZONE", "Europe/Berlin")
 
 
 def get_service():
