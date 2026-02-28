@@ -363,6 +363,31 @@ def cancel_appointment_api(apt_id):
 def index():
     return app.send_static_file("index.html")
 
+# --------------- Reminders API ---------------
+
+@app.route("/api/reminders/preview", methods=["GET"])
+def preview_reminders():
+    """Preview tomorrow's appointments that would get reminder calls."""
+    try:
+        from reminders import get_tomorrows_appointments
+        appointments = get_tomorrows_appointments()
+        return jsonify({
+            "date": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
+            "appointments": appointments
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/reminders/send", methods=["POST"])
+def send_reminders():
+    """Send reminder calls for tomorrow's appointments."""
+    try:
+        from reminders import send_all_reminders
+        results = send_all_reminders()
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "service": "voice-booking-agent"})
