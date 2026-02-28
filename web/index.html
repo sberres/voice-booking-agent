@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Booking Agent — Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+        h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        h1 span { color: #60a5fa; }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 2rem; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+        
+        .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
+        .card h2 { font-size: 1.2rem; margin-bottom: 1rem; color: #60a5fa; }
+        
+        label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.3rem; margin-top: 0.8rem; }
+        input, select, textarea { width: 100%; padding: 0.6rem; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 0.95rem; }
+        input:focus, select:focus { outline: none; border-color: #60a5fa; }
+        
+        .btn { display: inline-block; padding: 0.7rem 1.5rem; border: none; border-radius: 8px; font-size: 0.95rem; cursor: pointer; margin-top: 1rem; font-weight: 600; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-danger { background: #ef4444; color: white; font-size: 0.8rem; padding: 0.3rem 0.8rem; margin: 0; }
+        .btn-danger:hover { background: #dc2626; }
+        
+        .slots { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+        .slot { padding: 0.4rem 0.8rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+        .slot:hover, .slot.selected { background: #3b82f6; border-color: #3b82f6; }
+        
+        .appointments-list { margin-top: 1rem; }
+        .apt-item { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem; background: #0f172a; border-radius: 8px; margin-bottom: 0.5rem; border-left: 3px solid #3b82f6; }
+        .apt-info { flex: 1; }
+        .apt-time { font-weight: 600; color: #60a5fa; }
+        .apt-name { color: #e2e8f0; }
+        .apt-purpose { font-size: 0.8rem; color: #94a3b8; }
+        
+        .status { padding: 0.5rem 1rem; border-radius: 8px; margin-top: 1rem; font-size: 0.9rem; }
+        .status-success { background: #064e3b; color: #6ee7b7; }
+        .status-error { background: #7f1d1d; color: #fca5a5; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .badge { background: #064e3b; color: #6ee7b7; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.8rem; }
+        
+        .empty { text-align: center; color: #64748b; padding: 2rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🗓️ Voice <span>Booking</span> Agent</h1>
+                <p class="subtitle">AI-powered appointment scheduling via phone</p>
+            </div>
+            <div class="badge" id="serverStatus">● Connecting...</div>
+        </div>
+
+        <div class="grid">
+            <!-- Book Appointment -->
+            <div class="card">
+                <h2>📞 Book Appointment</h2>
+                <form id="bookForm">
+                    <label>Name</label>
+                    <input type="text" id="name" required placeholder="Full name">
+                    
+                    <label>Date</label>
+                    <input type="date" id="date" required>
+                    
+                    <label>Available Slots</label>
+                    <div class="slots" id="slotsContainer">
+                        <span class="empty" style="font-size: 0.85rem;">Select a date to see slots</span>
+                    </div>
+                    <input type="hidden" id="selectedTime">
+                    
+                    <label>Purpose</label>
+                    <input type="text" id="purpose" placeholder="e.g., Consultation, Check-up">
+                    
+                    <label>Phone</label>
+                    <input type="tel" id="phone" placeholder="+49...">
+                    
+                    <label>Email (optional)</label>
+                    <input type="email" id="email" placeholder="email@example.com">
+                    
+                    <button type="submit" class="btn btn-primary">Book Appointment</button>
+                </form>
+                <div id="bookStatus"></div>
+            </div>
+
+            <!-- Appointments List -->
+            <div class="card">
+                <h2>📋 Upcoming Appointments</h2>
+                <label>Filter by date</label>
+                <input type="date" id="filterDate" onchange="loadAppointments()">
+                <div class="appointments-list" id="appointmentsList">
+                    <div class="empty">No appointments yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.origin;
+        
+        // Set default date to today
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('date').value = today;
+        document.getElementById('date').min = today;
+        document.getElementById('filterDate').min = today;
+
+        // Check server health
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API}/health`);
+                if (res.ok) {
+                    document.getElementById('serverStatus').textContent = '● Online';
+                    document.getElementById('serverStatus').style.background = '#064e3b';
+                }
+            } catch {
+                document.getElementById('serverStatus').textContent = '● Offline';
+                document.getElementById('serverStatus').style.background = '#7f1d1d';
+                document.getElementById('serverStatus').style.color = '#fca5a5';
+            }
+        }
+        checkHealth();
+
+        // Load slots when date changes
+        document.getElementById('date').addEventListener('change', async (e) => {
+            const date = e.target.value;
+            const container = document.getElementById('slotsContainer');
+            container.innerHTML = '<span style="color:#94a3b8;font-size:0.85rem;">Loading...</span>';
+            
+            try {
+                const res = await fetch(`${API}/api/slots/${date}`);
+                const data = await res.json();
+                
+                if (data.slots.length === 0) {
+                    container.innerHTML = '<span class="empty" style="font-size:0.85rem;">No slots available</span>';
+                    return;
+                }
+                
+                container.innerHTML = data.slots.map(s => 
+                    `<div class="slot" onclick="selectSlot(this, '${s}')">${s}</div>`
+                ).join('');
+            } catch {
+                container.innerHTML = '<span style="color:#fca5a5;font-size:0.85rem;">Failed to load slots</span>';
+            }
+        });
+
+        // Trigger initial slot load
+        document.getElementById('date').dispatchEvent(new Event('change'));
+
+        function selectSlot(el, time) {
+            document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
+            el.classList.add('selected');
+            document.getElementById('selectedTime').value = time;
+        }
+
+        // Book appointment
+        document.getElementById('bookForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const time = document.getElementById('selectedTime').value;
+            if (!time) { alert('Please select a time slot'); return; }
+            
+            const body = {
+                name: document.getElementById('name').value,
+                date: document.getElementById('date').value,
+                time: time,
+                purpose: document.getElementById('purpose').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value
+            };
+            
+            try {
+                const res = await fetch(`${API}/api/appointments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                const status = document.getElementById('bookStatus');
+                
+                if (data.success) {
+                    status.innerHTML = `<div class="status status-success">✅ Booked: ${data.appointment.name} on ${data.appointment.date} at ${data.appointment.time}</div>`;
+                    document.getElementById('bookForm').reset();
+                    document.getElementById('date').value = today;
+                    document.getElementById('date').dispatchEvent(new Event('change'));
+                    loadAppointments();
+                } else {
+                    status.innerHTML = `<div class="status status-error">❌ ${data.error}</div>`;
+                }
+            } catch {
+                document.getElementById('bookStatus').innerHTML = '<div class="status status-error">❌ Server error</div>';
+            }
+        });
+
+        // Load appointments
+        async function loadAppointments() {
+            const dateFilter = document.getElementById('filterDate').value;
+            const url = dateFilter ? `${API}/api/appointments?date=${dateFilter}` : `${API}/api/appointments`;
+            
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                const list = document.getElementById('appointmentsList');
+                
+                if (data.length === 0) {
+                    list.innerHTML = '<div class="empty">No appointments found</div>';
+                    return;
+                }
+                
+                list.innerHTML = data.map(a => `
+                    <div class="apt-item">
+                        <div class="apt-info">
+                            <span class="apt-time">${a.date} ${a.time_start}-${a.time_end}</span><br>
+                            <span class="apt-name">${a.name}</span>
+                            ${a.purpose ? `<br><span class="apt-purpose">${a.purpose}</span>` : ''}
+                        </div>
+                        <button class="btn btn-danger" onclick="cancelApt(${a.id})">Cancel</button>
+                    </div>
+                `).join('');
+            } catch {
+                document.getElementById('appointmentsList').innerHTML = '<div class="empty">Failed to load</div>';
+            }
+        }
+        loadAppointments();
+
+        async function cancelApt(id) {
+            if (!confirm('Cancel this appointment?')) return;
+            await fetch(`${API}/api/appointments/${id}`, { method: 'DELETE' });
+            loadAppointments();
+        }
+    </script>
+</body>
+</html>

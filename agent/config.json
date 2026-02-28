@@ -1,0 +1,86 @@
+{
+  "name": "Booking Assistant",
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a friendly and professional appointment booking assistant. Help callers schedule, check, or cancel appointments.\n\nRules:\n- Be concise — this is a phone call\n- Always confirm details before booking\n- Business hours are 9 AM to 5 PM, Monday to Friday\n- Slots are 30 minutes each\n- If a slot is unavailable, suggest alternatives\n- Keep calls under 3 minutes\n\nFlow:\n1. Greet warmly\n2. Ask what they need (book, check, or cancel)\n3. Collect date and preferred time\n4. Use check_availability to find open slots\n5. Confirm name, date, time, and purpose\n6. Use book_appointment to finalize\n7. Summarize and say goodbye"
+      }
+    ]
+  },
+  "voice": {
+    "provider": "elevenlabs",
+    "voiceId": "21m00Tcm4TlvDq8ikWAM"
+  },
+  "serverUrl": "YOUR_SERVER_URL/vapi/webhook",
+  "functions": [
+    {
+      "name": "check_availability",
+      "description": "Check available appointment slots for a given date",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Date to check in YYYY-MM-DD format"
+          }
+        },
+        "required": ["date"]
+      }
+    },
+    {
+      "name": "book_appointment",
+      "description": "Book an appointment for a caller",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name of the person booking"
+          },
+          "date": {
+            "type": "string",
+            "description": "Appointment date in YYYY-MM-DD format"
+          },
+          "time": {
+            "type": "string",
+            "description": "Appointment start time in HH:MM format (24h)"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Purpose or type of appointment"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number of the caller"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address (optional)"
+          }
+        },
+        "required": ["name", "date", "time"]
+      }
+    },
+    {
+      "name": "cancel_appointment",
+      "description": "Cancel an existing appointment",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the person who booked"
+          },
+          "date": {
+            "type": "string",
+            "description": "Date of the appointment to cancel in YYYY-MM-DD format"
+          }
+        },
+        "required": ["name", "date"]
+      }
+    }
+  ]
+}
