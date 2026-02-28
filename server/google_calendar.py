@@ -13,6 +13,7 @@ CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "nishithkumar99008@gmail.com"
 SLOT_DURATION = 30  # minutes
 BUSINESS_START = 9   # 9 AM
 BUSINESS_END = 17    # 5 PM
+TIMEZONE = os.environ.get("CALENDAR_TIMEZONE", "Asia/Kolkata")
 
 
 def get_service():
@@ -27,16 +28,17 @@ def get_available_slots(date_str: str) -> list:
     """Get available slots for a given date from Google Calendar."""
     service = get_service()
 
-    # Parse date and create time range
+    # Parse date and create time range (use RFC3339 with timezone)
     date = datetime.strptime(date_str, "%Y-%m-%d")
-    time_min = date.replace(hour=BUSINESS_START, minute=0).isoformat() + "Z"
-    time_max = date.replace(hour=BUSINESS_END, minute=0).isoformat() + "Z"
+    time_min = date.replace(hour=0, minute=0).isoformat() + "Z"
+    time_max = date.replace(hour=23, minute=59).isoformat() + "Z"
 
     # Get existing events
     events_result = service.events().list(
         calendarId=CALENDAR_ID,
         timeMin=time_min,
         timeMax=time_max,
+        timeZone=TIMEZONE,
         singleEvents=True,
         orderBy="startTime"
     ).execute()
@@ -100,8 +102,8 @@ def book_appointment(name: str, date_str: str, time_str: str, purpose: str = "",
     event = {
         "summary": summary,
         "description": description,
-        "start": {"dateTime": start_dt.isoformat(), "timeZone": "UTC"},
-        "end": {"dateTime": end_dt.isoformat(), "timeZone": "UTC"},
+        "start": {"dateTime": start_dt.isoformat(), "timeZone": TIMEZONE},
+        "end": {"dateTime": end_dt.isoformat(), "timeZone": TIMEZONE},
     }
 
     created = service.events().insert(calendarId=CALENDAR_ID, body=event).execute()

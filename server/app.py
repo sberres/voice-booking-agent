@@ -175,11 +175,18 @@ def parse_date_flexible(date_str: str) -> str:
 def vapi_webhook():
     """Handle Vapi server-side function calls."""
     data = request.json
+    
+    # Vapi can send data in different formats
     msg = data.get("message", {})
     msg_type = msg.get("type", "")
+    
+    # Handle newer Vapi "tool-calls" format where data is at top level
+    if not msg_type and "type" in data:
+        msg = data
+        msg_type = data.get("type", "")
 
     # Log all incoming webhook data for debugging
-    print(f"📥 Webhook: type={msg_type}, data={json.dumps(data, default=str)[:500]}")
+    print(f"📥 Webhook: type={msg_type}, full_keys={list(data.keys())}, data={json.dumps(data, default=str)[:800]}")
 
     # Handle function calls from the voice agent
     if msg_type == "function-call":
@@ -243,6 +250,57 @@ def vapi_webhook():
             else:
                 result = f"No appointment found for {name} on {date_str}."
             return jsonify({"results": [{"result": result}]})
+
+    # Handle "tool-calls" type (Vapi newer format)
+    if msg_type == "tool-calls":
+        tool_calls = msg.get("toolCalls", data.get("toolCalls", []))
+        results = []
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            fn_name = fn.get("name", "")
+            params = fn.get("arguments", {})
+            if isinstance(params, str):
+                params = json.loads(params)
+            print(f"🔧 Tool call: {fn_name} params={params}")
+            
+            if fn_name == "check_availability":
+                date_str = parse_date_flexible(params.get("date", datetime.now().strftime("%Y-%m-%d")))
+                slots = gcal_slots(date_str) if USE_GOOGLE else get_available_slots(date_str)
+                if slots:
+                    slot_text = ", ".join(slots[:6])
+                    res = f"Available slots on {date_str}: {slot_text}"
+                    if len(slots) > 6:
+                        res += f" and {len(slots) - 6} more."
+                else:
+                    res = f"No available slots on {date_str}."
+                results.append({"toolCallId": tc.get("id"), "result": res})
+            
+            elif fn_name == "book_appointment":
+                book_fn = gcal_book if USE_GOOGLE else book_appointment
+                result = book_fn(
+                    name=params.get("name", "Unknown"),
+                    date_str=parse_date_flexible(params.get("date", "")),
+                    time_str=params.get("time", ""),
+                    purpose=params.get("purpose", ""),
+                    phone=params.get("phone", ""),
+                    email=params.get("email", "")
+                )
+                if result["success"]:
+                    apt = result["appointment"]
+                    res = f"Appointment booked for {apt['name']} on {apt['date']} at {apt['time']}."
+                else:
+                    res = result["error"]
+                results.append({"toolCallId": tc.get("id"), "result": res})
+            
+            elif fn_name == "cancel_appointment":
+                if USE_GOOGLE:
+                    result = gcal_cancel(params.get("name", ""), parse_date_flexible(params.get("date", "")))
+                    res = f"Cancelled." if result["success"] else result["error"]
+                else:
+                    res = "Cancelled."
+                results.append({"toolCallId": tc.get("id"), "result": res})
+        
+        return jsonify({"results": results})
 
     # Handle other webhook events (status updates, end-of-call, etc.)
     if msg_type == "end-of-call-report":
