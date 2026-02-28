@@ -118,6 +118,57 @@ def book_appointment(name: str, date_str: str, time_str: str, purpose: str = "",
         }
     }
 
+# --------------- Date Parsing ---------------
+
+def parse_date_flexible(date_str: str) -> str:
+    """Parse various date formats into YYYY-MM-DD."""
+    if not date_str:
+        return datetime.now().strftime("%Y-%m-%d")
+    
+    # Already in correct format
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return date_str
+    except ValueError:
+        pass
+    
+    # Try common formats
+    for fmt in ["%m/%d/%Y", "%d/%m/%Y", "%B %d, %Y", "%b %d, %Y", "%B %d %Y", "%d %B %Y"]:
+        try:
+            return datetime.strptime(date_str, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    
+    # Handle day names (Monday, Tuesday, etc.)
+    days = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+    lower = date_str.lower().strip()
+    if lower in days:
+        today = datetime.now()
+        target_day = days[lower]
+        days_ahead = target_day - today.weekday()
+        if days_ahead <= 0:
+            days_ahead += 7
+        return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+    
+    if lower == "today":
+        return datetime.now().strftime("%Y-%m-%d")
+    if lower == "tomorrow":
+        return (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    # Handle "next monday", "next week", etc.
+    if lower.startswith("next "):
+        day_name = lower.replace("next ", "")
+        if day_name in days:
+            today = datetime.now()
+            target_day = days[day_name]
+            days_ahead = target_day - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+    
+    print(f"⚠️ Could not parse date: '{date_str}', using as-is")
+    return date_str
+
 # --------------- Vapi Webhook ---------------
 
 @app.route("/vapi/webhook", methods=["POST"])
@@ -127,14 +178,19 @@ def vapi_webhook():
     msg = data.get("message", {})
     msg_type = msg.get("type", "")
 
+    # Log all incoming webhook data for debugging
+    print(f"📥 Webhook: type={msg_type}, data={json.dumps(data, default=str)[:500]}")
+
     # Handle function calls from the voice agent
     if msg_type == "function-call":
         function_call = msg.get("functionCall", {})
         fn_name = function_call.get("name", "")
         params = function_call.get("parameters", {})
+        print(f"🔧 Function call: {fn_name} params={params}")
 
         if fn_name == "check_availability":
             date_str = params.get("date", datetime.now().strftime("%Y-%m-%d"))
+            date_str = parse_date_flexible(date_str)
             slots = gcal_slots(date_str) if USE_GOOGLE else get_available_slots(date_str)
             if slots:
                 slot_text = ", ".join(slots[:6])  # Show max 6 slots
@@ -149,7 +205,7 @@ def vapi_webhook():
             book_fn = gcal_book if USE_GOOGLE else book_appointment
             result = book_fn(
                 name=params.get("name", "Unknown"),
-                date_str=params.get("date", ""),
+                date_str=parse_date_flexible(params.get("date", "")),
                 time_str=params.get("time", ""),
                 purpose=params.get("purpose", ""),
                 phone=params.get("phone", ""),
