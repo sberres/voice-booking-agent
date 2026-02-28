@@ -199,13 +199,15 @@ def vapi_webhook():
             date_str = params.get("date", datetime.now().strftime("%Y-%m-%d"))
             date_str = parse_date_flexible(date_str)
             slots = gcal_slots(date_str) if USE_GOOGLE else get_available_slots(date_str)
+            today = datetime.now().strftime("%Y-%m-%d")
+            day_name = datetime.strptime(date_str, "%Y-%m-%d").strftime("%A")
             if slots:
                 slot_text = ", ".join(slots[:6])  # Show max 6 slots
-                result = f"Available slots on {date_str}: {slot_text}"
+                result = f"Today is {today}. Available slots on {day_name} {date_str}: {slot_text}"
                 if len(slots) > 6:
                     result += f" and {len(slots) - 6} more."
             else:
-                result = f"No available slots on {date_str}. Please try another date."
+                result = f"Today is {today}. No available slots on {day_name} {date_str}. Please try another date."
             return jsonify({"results": [{"result": result}]})
 
         elif fn_name == "book_appointment":
